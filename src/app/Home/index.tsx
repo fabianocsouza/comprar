@@ -1,4 +1,11 @@
-import { FlatList, Image, Text, TouchableOpacity, View } from "react-native";
+import {
+  Alert,
+  FlatList,
+  Image,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 import { styles } from "./styles";
 
@@ -7,48 +14,121 @@ import { Input } from "@/components/Input";
 import { Filter } from "@/components/Filter";
 import { FilterStatus } from "@/types/FilterStatus";
 import { Item } from "@/components/Item";
+import { useEffect, useState } from "react";
+import { itemsStorage, ItemStorage } from "@/storage/itemsStorage";
 
 const FILTER_STATUS: FilterStatus[] = [FilterStatus.PENDING, FilterStatus.DONE];
-const ITEM = [
-  { id: "1", status: FilterStatus.DONE, description: "1 pacote de café" },
-  {
-    id: "2",
-    status: FilterStatus.PENDING,
-    description: "3 pacote de macarrão",
-  },
-  { id: "3", status: FilterStatus.PENDING, description: "3 cebolas" },
-];
 
 export function Home() {
+  const [filter, setFilter] = useState(FilterStatus.PENDING);
+  const [description, setDescription] = useState("");
+  const [items, setItems] = useState<ItemStorage[]>([]);
+
+  async function handleAdd() {
+    if (!description.trim()) {
+      return Alert.alert("Adicionar", "Informe a descrição para adicionar");
+    }
+
+    const newItem = {
+      id: Math.random().toString(36).substring(2),
+      description,
+      status: FilterStatus.PENDING,
+    };
+
+    await itemsStorage.add(newItem);
+    await itemByStatus();
+
+    Alert.alert("Adicionado", `Adicionado ${description}`);
+    setFilter(FilterStatus.PENDING);
+    setDescription("");
+  }
+
+  async function itemByStatus() {
+    try {
+      const response = await itemsStorage.getByStatus(filter);
+      setItems(response);
+    } catch (error) {
+      console.log(error);
+      Alert.alert("Erro", "Não foi possível filtrar os itens.");
+    }
+  }
+
+  async function handleRemove(id: string) {
+    try {
+      await itemsStorage.remove(id);
+      await itemByStatus();
+    } catch (error) {
+      Alert.alert("Remover", "Não foi possível remover.");
+    }
+  }
+
+  function handleClear() {
+    Alert.alert("Limpar", "Deseja remover todos?", [
+      { text: "Não", style: "cancel" },
+      { text: "Sim", onPress: onClear },
+    ]);
+  }
+
+  async function onClear() {
+    try {
+      await itemsStorage.clear();
+      setItems([]);
+    } catch (error) {
+      console.log(error);
+      Alert.alert("Erro", "Não foi possível remover todos os itens.");
+    }
+  }
+
+  async function handleToggleStatus(id: string) {
+    try {
+      await itemsStorage.toggleStatus(id);
+      await itemByStatus();
+    } catch (error) {
+      console.log(error);
+      Alert.alert("Erro", "Não foi possível atualizar o status.");
+    }
+  }
+
+  useEffect(() => {
+    itemByStatus();
+  }, [filter]);
+
   return (
     <View style={styles.container}>
       <Image style={styles.logo} source={require("@/assets/logo.png")} />
+
       <View style={styles.form}>
-        <Input placeholder="O que você precisa comprar?" />
-        <Button title="Adicionar" />
+        <Input
+          placeholder="O que você precisa comprar?"
+          onChangeText={setDescription}
+          value={description}
+        />
+        <Button title="Adicionar" onPress={handleAdd} />
       </View>
+
       <View style={styles.content}>
         <View style={styles.header}>
           {FILTER_STATUS.map((status) => (
             <Filter
               key={status}
               status={status}
-              isActive={status === FilterStatus.DONE}
+              isActive={status === filter}
+              onPress={() => setFilter(status)}
             />
           ))}
-          <TouchableOpacity style={styles.clearButton}>
+          <TouchableOpacity style={styles.clearButton} onPress={handleClear}>
             <Text style={styles.clearText}>Limpar</Text>
           </TouchableOpacity>
         </View>
 
         <FlatList
-          data={ITEM}
+          data={items}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
             <Item
               data={item}
-              onRemove={() => console.log("Remover")}
-              onStatus={() => console.log("mudar status")}
+              onRemove={() => handleRemove(item.id)}
+              onStatus={() => handleToggleStatus(item.id)}
             />
           )}
           showsVerticalScrollIndicator={false}
